@@ -1,0 +1,1139 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AIセキュリティ・クエスト</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* レトロRPG風の基本スタイル */
+        body {
+            background-color: #111;
+            color: #fff;
+            font-family: 'Helvetica Neue', Arial, 'Hiragino Kaku Gothic ProN', 'Hiragino Sans', Meiryo, sans-serif;
+            touch-action: manipulation;
+            user-select: none;
+        }
+        .rpg-box {
+            background-color: #000;
+            border: 4px solid #fff;
+            border-radius: 8px;
+            padding: 1rem;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.5);
+        }
+        .rpg-button {
+            display: block;
+            width: 100%;
+            background-color: #000;
+            border: 2px solid #fff;
+            color: #fff;
+            padding: 0.75rem;
+            margin-bottom: 0.5rem;
+            border-radius: 4px;
+            text-align: left;
+            cursor: pointer;
+            transition: all 0.2s;
+            font-weight: bold;
+        }
+        .rpg-button:hover, .rpg-button:active {
+            background-color: #333;
+            border-color: #ffeb3b;
+            padding-left: 1.25rem;
+        }
+        .rpg-button.selected {
+            background-color: #fff;
+            color: #000;
+        }
+        
+        @keyframes blink {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0; }
+        }
+        .animate-blink {
+            animation: blink 1.5s infinite;
+        }
+
+        @keyframes shake {
+            0%, 100% { transform: translateX(0); }
+            20% { transform: translateX(-5px); }
+            40% { transform: translateX(5px); }
+            60% { transform: translateX(-5px); }
+            80% { transform: translateX(5px); }
+        }
+        .shake {
+            animation: shake 0.4s ease-in-out;
+        }
+
+        /* 主人公の前進＆呪文詠唱(腕上げ)アニメーション */
+        @keyframes heroStepForward {
+            0% { transform: translateX(0) translateY(0); }
+            40% { transform: translateX(70px) translateY(-4px) scale(1.1); }
+            100% { transform: translateX(0) translateY(0); }
+        }
+        .hero-step {
+            animation: heroStepForward 0.35s ease-in-out;
+        }
+
+        @keyframes heroCastMagic {
+            0% { transform: translateY(0); }
+            30% { transform: translateY(-10px) scale(1.05); }
+            70% { transform: translateY(-10px) scale(1.05); }
+            100% { transform: translateY(0); }
+        }
+        .hero-cast {
+            animation: heroCastMagic 0.5s ease-in-out;
+        }
+
+        /* 職業別攻撃エフェクト（右側の敵付近にポップするように修正） */
+        .attack-effect-container {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            z-index: 15;
+        }
+
+        /* 1. 戦士：切りつける (Slash - 右側) */
+        .fx-slash {
+            position: absolute;
+            top: 35%;
+            right: 18%;
+            width: 0;
+            height: 6px;
+            background-color: #fff;
+            box-shadow: 0 0 16px #fff, 0 0 24px #38bdf8;
+            transform: rotate(45deg);
+            opacity: 0;
+        }
+        @keyframes animSlash {
+            0% { width: 0; opacity: 1; transform: translate(-10px, -10px) rotate(45deg); }
+            50% { width: 140px; opacity: 1; transform: translate(10px, 10px) rotate(45deg); }
+            100% { width: 140px; opacity: 0; transform: translate(20px, 20px) rotate(45deg); }
+        }
+        .fx-slash.active { animation: animSlash 0.3s ease-out forwards; }
+
+        /* 2. 商人：お金を投げる (Coins - 右側へ飛ぶ) */
+        .coin-particle {
+            position: absolute;
+            top: 45%;
+            left: 30%;
+            width: 22px;
+            height: 22px;
+            background-color: #fbbf24;
+            border: 2px solid #b45309;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 11px;
+            font-weight: bold;
+            color: #78350f;
+            opacity: 0;
+        }
+        @keyframes animCoin {
+            0% { transform: translate(0, 0) scale(0.5); opacity: 1; }
+            70% { transform: translate(110px, -25px) scale(1.3); opacity: 1; }
+            100% { transform: translate(130px, -10px) scale(1); opacity: 0; }
+        }
+        .coin-particle.active { animation: animCoin 0.4s ease-out forwards; }
+
+        /* 3. 賢者：炎や電気の豪華な範囲魔法 (Grand Magic - 右側) */
+        .fx-grand-magic {
+            position: absolute;
+            top: 25%;
+            right: 12%;
+            width: 130px;
+            height: 130px;
+            border-radius: 50%;
+            background: radial-gradient(circle, rgba(239,68,68,0.9) 0%, rgba(234,179,8,0.8) 50%, rgba(59,130,246,0) 70%);
+            box-shadow: 0 0 35px #f59e0b, 0 0 70px #ef4444;
+            transform: scale(0);
+            opacity: 0;
+        }
+        @keyframes animGrandMagic {
+            0% { transform: scale(0) rotate(0deg); opacity: 0; }
+            50% { transform: scale(1.4) rotate(180deg); opacity: 1; }
+            100% { transform: scale(1.8) rotate(360deg); opacity: 0; }
+        }
+        .fx-grand-magic.active { animation: animGrandMagic 0.6s ease-out forwards; }
+
+        /* 4. 僧侶：聖なる光の魔法 (Holy Light - 右側) */
+        .fx-holy {
+            position: absolute;
+            top: 25%;
+            right: 12%;
+            width: 130px;
+            height: 130px;
+            background: radial-gradient(circle, rgba(254,240,138,1) 0%, rgba(250,204,21,0.6) 40%, rgba(255,255,255,0) 70%);
+            box-shadow: 0 0 45px #facc15;
+            border-radius: 50%;
+            transform: scale(0);
+            opacity: 0;
+        }
+        @keyframes animHoly {
+            0% { transform: scale(0); opacity: 0; }
+            40% { transform: scale(1.3); opacity: 1; }
+            100% { transform: scale(1.6); opacity: 0; }
+        }
+        .fx-holy.active { animation: animHoly 0.5s ease-out forwards; }
+
+        /* 5. 魔法使い：上からの単体雷魔法 (Lightning - 右側) */
+        .fx-lightning {
+            position: absolute;
+            top: 5%;
+            right: 23%;
+            width: 14px;
+            height: 130px;
+            background: linear-gradient(to bottom, transparent, #38bdf8, #fff, #38bdf8);
+            box-shadow: 0 0 25px #38bdf8;
+            opacity: 0;
+        }
+        @keyframes animLightning {
+            0% { opacity: 0; transform: scaleY(0); }
+            30% { opacity: 1; transform: scaleY(1.3); }
+            100% { opacity: 0; transform: scaleY(1); }
+        }
+        .fx-lightning.active { animation: animLightning 0.3s ease-out forwards; }
+
+        .mark-circle {
+            position: absolute;
+            top: 45%;
+            right: 20%;
+            transform: translate(-50%, -50%) scale(0);
+            width: 90px;
+            height: 90px;
+            border: 10px solid #4ade80;
+            border-radius: 50%;
+            opacity: 0;
+            z-index: 20;
+            pointer-events: none;
+        }
+        .mark-cross {
+            position: absolute;
+            top: 45%;
+            right: 20%;
+            transform: translate(-50%, -50%) scale(0);
+            width: 90px;
+            height: 90px;
+            opacity: 0;
+            z-index: 20;
+            pointer-events: none;
+        }
+        .mark-cross::before, .mark-cross::after {
+            content: '';
+            position: absolute;
+            top: 50%;
+            left: 0;
+            width: 90px;
+            height: 10px;
+            background-color: #f87171;
+        }
+        .mark-cross::before { transform: translateY(-50%) rotate(45deg); }
+        .mark-cross::after { transform: translateY(-50%) rotate(-45deg); }
+        
+        @keyframes pop {
+            0% { transform: translate(-50%, -50%) scale(0); opacity: 1; }
+            80% { transform: translate(-50%, -50%) scale(1.2); opacity: 1; }
+            100% { transform: translate(-50%, -50%) scale(1); opacity: 1; }
+        }
+        .pop-active {
+            animation: pop 0.4s ease-out forwards;
+        }
+
+        #boss-screen {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            background-color: #fff;
+            color: #333;
+            z-index: 9999;
+            padding: 1rem;
+            font-family: 'Meiryo', sans-serif;
+            overflow: auto;
+        }
+
+        canvas {
+            image-rendering: pixelated;
+        }
+    </style>
+</head>
+<body class="flex items-center justify-center min-h-screen">
+
+    <button id="btn-boss" class="fixed top-2 left-2 bg-gray-800 text-xs text-gray-400 px-2 py-1 rounded border border-gray-600 hover:text-white z-50">
+        Excel
+    </button>
+    
+    <button id="btn-sound" class="fixed top-2 right-2 bg-gray-800 text-xs text-gray-400 px-2 py-1 rounded border border-gray-600 hover:text-white z-50">
+        ♪ OFF
+    </button>
+
+    <div id="boss-screen">
+        <h2 class="text-xl font-bold mb-4">月次売上集計表（ダミー）</h2>
+        <table class="w-full border-collapse border border-gray-400 text-sm">
+            <thead>
+                <tr class="bg-gray-200">
+                    <th class="border border-gray-400 p-1">日付</th>
+                    <th class="border border-gray-400 p-1">部門</th>
+                    <th class="border border-gray-400 p-1">売上(千円)</th>
+                    <th class="border border-gray-400 p-1">備考</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr><td class="border border-gray-400 p-1 text-center">10/1</td><td class="border border-gray-400 p-1">第一営業部</td><td class="border border-gray-400 p-1 text-right">1,250</td><td class="border border-gray-400 p-1"></td></tr>
+                <tr><td class="border border-gray-400 p-1 text-center">10/2</td><td class="border border-gray-400 p-1">第二営業部</td><td class="border border-gray-400 p-1 text-right">980</td><td class="border border-gray-400 p-1">確認済</td></tr>
+                <tr><td class="border border-gray-400 p-1 text-center">10/3</td><td class="border border-gray-400 p-1">第一営業部</td><td class="border border-gray-400 p-1 text-right">1,500</td><td class="border border-gray-400 p-1"></td></tr>
+                <tr><td class="border border-gray-400 p-1 text-center">10/4</td><td class="border border-gray-400 p-1">第三営業部</td><td class="border border-gray-400 p-1 text-right">720</td><td class="border border-gray-400 p-1"></td></tr>
+                <tr><td class="border border-gray-400 p-1 text-center">10/5</td><td class="border border-gray-400 p-1">第二営業部</td><td class="border border-gray-400 p-1 text-right">1,100</td><td class="border border-gray-400 p-1">前倒し</td></tr>
+            </tbody>
+        </table>
+        <p class="mt-4 text-xs text-gray-500">※画面をもう一度クリックすると戻ります</p>
+    </div>
+
+    <div id="game-container" class="w-full max-w-md w-full h-[100dvh] sm:h-auto sm:min-h-[600px] flex flex-col relative overflow-hidden shadow-2xl sm:rounded-lg bg-gray-900 border-x-4 border-y-4 sm:border-y-4 border-gray-700">
+        
+        <section id="screen-title" class="flex-1 flex flex-col items-center justify-center p-4">
+            <h1 id="title-logo" class="text-4xl font-extrabold text-center mb-6 text-transparent bg-clip-text bg-gradient-to-b from-yellow-300 to-yellow-600 drop-shadow-[0_2px_2px_rgba(255,255,255,0.8)] cursor-pointer">
+                AIセキュリティ<br>クエスト
+            </h1>
+            <div class="rpg-box mb-6 w-4/5 text-center">
+                <p class="text-sm">〜 会社を守る3分間の冒険 〜</p>
+            </div>
+            <p id="btn-start" class="text-xl font-bold text-yellow-400 animate-blink cursor-pointer mb-4">PRESS START</p>
+            <p class="text-[10px] text-gray-500 mb-6">ヒントは、懐かしのコマンド</p>
+            
+            <div class="flex flex-col gap-2 w-48">
+                <button class="rpg-button text-xs text-center py-2" onclick="openCollection('history')">取得称号を見る</button>
+                <button class="rpg-button text-xs text-center py-2" onclick="openCollection('items')">取得アイテムを見る</button>
+            </div>
+        </section>
+
+        <section id="screen-collection" class="hidden flex-1 flex flex-col p-4 pt-6">
+            <h2 class="text-lg font-bold text-yellow-300 mb-3 text-center" id="collection-title">冒険のきろく・コレクション</h2>
+            <div class="rpg-box flex-1 overflow-y-auto mb-4 text-xs space-y-3 p-3">
+                <div id="section-history-box">
+                    <h3 class="font-bold text-yellow-400 border-b border-gray-700 pb-1 mb-1">【これまでの称号・成績】</h3>
+                    <div id="history-list" class="space-y-1 text-gray-300">まだプレイ履歴がありません</div>
+                </div>
+                <div id="section-item-box" class="mt-4">
+                    <h3 class="font-bold text-yellow-400 border-b border-gray-700 pb-1 mb-1">【集めたアイテム・カード】</h3>
+                    <div id="item-list" class="grid grid-cols-1 gap-2 mt-1">まだアイテムを獲得していません</div>
+                </div>
+            </div>
+            <button class="rpg-button text-center" onclick="changeScreen('screen-title')">タイトルに戻る</button>
+        </section>
+
+        <section id="screen-notice" class="hidden flex-1 flex flex-col items-center justify-center p-4">
+            <div class="rpg-box w-full max-w-sm mb-6">
+                <h2 class="text-center text-yellow-300 border-b border-white pb-2 mb-4">【お知らせ】</h2>
+                <p class="text-sm mb-3 leading-relaxed">このゲームは約3分(5問)で1セット、いつでも中断できます。</p>
+                <p class="text-sm mb-3 leading-relaxed">最後まで遊ぶと、人事考課の「研修参加」項目として加点されます。</p>
+                <p class="text-sm text-gray-400 leading-relaxed">※正解数・点数は考課には使いません。間違えても大丈夫です。</p>
+            </div>
+            <button class="rpg-button w-48 text-center" onclick="changeScreen('screen-job')">了解</button>
+        </section>
+
+        <section id="screen-job" class="hidden flex-1 flex flex-col items-center p-4 pt-10">
+            <h2 class="text-xl font-bold mb-6 text-yellow-300">君の職種（職業）は？</h2>
+            <div class="w-full max-w-sm flex-1 overflow-y-auto">
+                <button class="rpg-button" onclick="selectJob('sales')">営業 ＝ 商人</button>
+                <button class="rpg-button" onclick="selectJob('accounting')">経理 ＝ 賢者</button>
+                <button class="rpg-button" onclick="selectJob('hr')">総務・人事 ＝ 僧侶</button>
+                <button class="rpg-button" onclick="selectJob('manufacturing')">製造 ＝ 戦士</button>
+                <button class="rpg-button" onclick="selectJob('dev')">開発・技術 ＝ 魔法使い</button>
+            </div>
+        </section>
+
+        <section id="screen-battle" class="hidden flex-1 flex flex-col p-4">
+            <div class="h-1/2 flex flex-col items-center relative" id="battle-area">
+                <div class="w-full flex justify-between px-2 mb-1 text-sm">
+                    <span id="battle-job-name" class="font-bold text-yellow-300">商人</span>
+                    <span id="battle-progress">第 1 問 / 5</span>
+                </div>
+                
+                <div class="relative w-full h-44 flex items-center justify-between px-8">
+                    <!-- 主人公キャラクター(左側：拡大表示) -->
+                    <div id="hero-wrapper" class="flex flex-col items-center transition-transform">
+                        <canvas id="hero-canvas" width="96" height="96" class="w-24 h-24"></canvas>
+                        <span id="hero-label" class="text-xs text-yellow-200 mt-1 font-bold">主人公</span>
+                    </div>
+
+                    <!-- 敵キャラクター(右側：拡大表示) -->
+                    <div class="flex flex-col items-center">
+                        <canvas id="enemy-canvas" width="96" height="96" class="w-24 h-24"></canvas>
+                        <span id="enemy-name" class="text-xs text-red-400 mt-1 font-bold">スライム</span>
+                    </div>
+                    
+                    <!-- 攻撃エフェクトコンテナ (敵側周辺) -->
+                    <div class="attack-effect-container">
+                        <div class="fx-slash" id="fx-slash"></div>
+                        <div class="coin-particle" id="fx-coin1">¥</div>
+                        <div class="coin-particle" id="fx-coin2" style="animation-delay: 0.08s;">¥</div>
+                        <div class="coin-particle" id="fx-coin3" style="animation-delay: 0.16s;">¥</div>
+                        <div class="fx-grand-magic" id="fx-grand"></div>
+                        <div class="fx-holy" id="fx-holy"></div>
+                        <div class="fx-lightning" id="fx-lightning"></div>
+                    </div>
+
+                    <div class="mark-circle" id="mark-o"></div>
+                    <div class="mark-cross" id="mark-x"></div>
+                </div>
+            </div>
+
+            <div class="h-1/2 flex flex-col">
+                <div class="rpg-box mb-2 p-3 text-sm h-24 overflow-y-auto" id="question-text">
+                    問題文がここに入ります。
+                </div>
+                <div class="flex-1 flex flex-col gap-1 overflow-y-auto" id="choices-container">
+                </div>
+            </div>
+
+            <div id="explanation-modal" class="hidden absolute inset-0 bg-black bg-opacity-90 flex flex-col items-center justify-center p-4 z-30">
+                <div class="rpg-box w-full max-w-sm flex flex-col">
+                    <h3 id="exp-title" class="text-xl font-bold mb-2 text-center text-yellow-300">ヒヤリハット解説</h3>
+                    <div id="exp-text" class="text-sm mb-4 leading-relaxed">
+                        解説テキストがここに入ります。
+                    </div>
+                    <button class="rpg-button mt-auto" onclick="nextQuestion()">次へ</button>
+                </div>
+            </div>
+        </section>
+
+        <section id="screen-gacha" class="hidden flex-1 flex flex-col items-center justify-center p-4">
+            <h2 class="text-2xl font-bold mb-8 text-yellow-300">宝箱を発見！</h2>
+            <div id="chest-icon" class="w-24 h-24 bg-yellow-600 border-4 border-yellow-800 rounded mb-8 flex items-center justify-center cursor-pointer animate-pulse" onclick="openChest()">
+                <span class="text-4xl">📦</span>
+            </div>
+            <p id="chest-hint" class="text-sm">タップして開ける</p>
+
+            <div id="gacha-result" class="hidden flex-col items-center w-full max-w-sm">
+                <div class="rpg-box w-full text-center mb-6">
+                    <p class="text-sm text-gray-300 mb-1" id="gacha-type">アイテム種別</p>
+                    <h3 class="text-xl font-bold text-yellow-400 mb-2" id="gacha-name">アイテム名</h3>
+                    <p class="text-sm" id="gacha-desc">アイテムの説明文。</p>
+                </div>
+                <button class="rpg-button" onclick="changeScreen('screen-title-eval')">次へ</button>
+            </div>
+        </section>
+
+        <section id="screen-title-eval" class="hidden flex-1 flex flex-col items-center p-4 pt-8">
+            <div class="rpg-box w-full max-w-sm mb-6 text-center">
+                <p class="text-sm mb-1">今回の称号 (5点満点評価)</p>
+                <h2 class="text-2xl font-bold text-yellow-300 mb-2" id="player-title">うっかり見習い</h2>
+                <p class="text-xs text-gray-400">正解数: <span id="current-score">0</span> / 5 問</p>
+            </div>
+
+            <h3 class="font-bold mb-3 text-center">「明日からやること」を宣言しよう</h3>
+            <div class="w-full max-w-sm flex-1 overflow-y-auto mb-4">
+                <button class="rpg-button text-sm" onclick="declare('機密情報や個人情報はAIに入力しない')">機密情報や個人情報はAIに入力しない</button>
+                <button class="rpg-button text-sm" onclick="declare('AIの回答は必ず裏取りする')">AIの回答は必ず裏取りする</button>
+                <button class="rpg-button text-sm" onclick="declare('会社が許可したAIツールだけを使う')">会社が許可したAIツールだけを使う</button>
+                <button class="rpg-button text-sm" onclick="declare('不審な依頼は、AIが作った可能性も疑う')">不審な依頼は、AI生成を疑って確認する</button>
+            </div>
+        </section>
+
+        <section id="screen-end" class="hidden flex-1 flex flex-col items-center justify-center p-4">
+            <h2 class="text-2xl font-bold mb-4 text-yellow-300 text-center">宣言完了！</h2>
+            <p id="declared-text" class="text-center text-sm mb-8 px-4 leading-relaxed"></p>
+            <div class="w-full max-w-sm">
+                <button class="rpg-button mb-4 bg-blue-900" onclick="resetGame()">もう1セット遊ぶ</button>
+                <button class="rpg-button" onclick="changeScreen('screen-title')">タイトルに戻る</button>
+            </div>
+        </section>
+    </div>
+
+    <!-- 隠しコマンド達成時の通知モーダル -->
+    <div id="secret-modal" class="hidden fixed inset-0 bg-black bg-opacity-95 flex flex-col items-center justify-center p-4 z-50">
+        <div class="rpg-box w-full max-w-sm text-center">
+            <h3 class="text-2xl font-bold text-yellow-400 mb-3 animate-bounce">★ 隠しコマンド成功 ★</h3>
+            <p class="text-sm text-yellow-200 mb-2">隠し称号 <span class="font-bold">「伝説の中堅社員」</span> を獲得しました！</p>
+            <p class="text-xs text-gray-300 mb-6">さらに、レアアイテム「部長の失敗談カード」をコレクションに追加しました！</p>
+            <button class="rpg-button text-center" onclick="closeSecretModal()">OK</button>
+        </div>
+    </div>
+
+    <script>
+        const enemies = {
+            input: { name: 'うっかり入力スライム', color: '#3b82f6', type: 'slime' },
+            hallucination: { name: 'ハルシネーション・ゴースト', color: '#eab308', type: 'ghost' },
+            shadow: { name: 'シャドーAIデーモン', color: '#ef4444', type: 'demon' },
+            phishing: { name: 'なりすましメール忍者', color: '#8b5cf6', type: 'ninja' },
+            boss: { name: 'AIリスク・ドラゴン', color: '#10b981', type: 'boss' }
+        };
+
+        const jobMap = {
+            sales: '商人',
+            accounting: '賢者',
+            hr: '僧侶',
+            manufacturing: '戦士',
+            dev: '魔法使い'
+        };
+
+        const qData = {
+            sales: [
+                { cat: 'input', q: '取引先から預かった未発表の新製品情報をAIに要約させてよいか？', a: ['絶対にダメ', '社内PCからならOK', '企業名を伏せればOK'], c: 0, exp: '未発表の機密情報は、AIの学習データとして使われるリスクがあります。絶対に入力してはいけません。' },
+                { cat: 'input', q: '見込み顧客のリスト（氏名・メアド）をAIに入れて分析させたい。', a: ['個人情報なのでダメ', 'メアドだけならOK', 'パスワードをかければOK'], c: 0, exp: '個人情報を許可なく外部のAIに入力することは、個人情報保護法違反や漏洩のリスクになります。' },
+                { cat: 'hallucination', q: 'AIが作った商談スクリプト。内容が良さそうだが？', a: ['そのまま使う', '必ず内容の裏取りをする', '少しだけ書き換えて使う'], c: 1, exp: 'AIはもっともらしい嘘（ハルシネーション）をつくことがあります。必ず自分の知識や公式資料で事実確認を行ってください。' },
+                { cat: 'hallucination', q: '競合他社の最新動向をAIに聞いたら、知らない製品名が出てきた。', a: ['そのまま報告書に書く', '公式HPなどで存在を確認する', '気にせず無視する'], c: 1, exp: 'AIの学習データが古い場合や、架空の情報を生成している可能性があります。一次情報での確認が必須です。' },
+                { cat: 'shadow', q: '会社のPCは遅いので、私用のスマホの無料AIアプリで議事録を作りたい。', a: ['会社のルール違反なのでダメ', '誰にも言わなければOK', '通信量が定額ならOK'], c: 0, exp: '会社が許可していないツール（シャドーIT）の利用は、セキュリティ管理が行き届かず情報漏洩の温床になります。' },
+                { cat: 'shadow', q: '海外の取引先から来たメール。会社非公認の便利なAI翻訳サイトで訳していい？', a: ['機密でなければOK', '非公認ツールは使わない', '履歴を消せばOK'], c: 1, exp: '無料の翻訳サイト等も入力データを利用する場合があります。必ず会社が指定・許可したツールを使用しましょう。' },
+                { cat: 'phishing', q: '取引先から「急ぎで振込先口座を変更して」とメールが来た。', a: ['すぐ振り込む', '電話など別の手段で本人確認する', 'メールで「本当ですか？」と返信する'], c: 1, exp: 'AIを使って巧妙な偽メールを作る手口が増えています。金銭や重要な依頼は、メール以外の方法（電話など）で確認しましょう。' },
+                { cat: 'phishing', q: '上司を名乗る人から「今会議中だから、急いでギフト券を買って番号を送れ」とLINEが。', a: ['急いで買って送る', '無視する', '本人に直接または電話で確認する'], c: 2, exp: '典型的な詐欺の手口です。AIによる音声模倣のケースもあるため、焦らず直接確認することが重要です。' }
+            ],
+            accounting: [
+                { cat: 'input', q: '未公開の決算データをAIに入れて、分析レポートを作らせてよいか？', a: ['絶対にダメ', '数字だけならOK', 'パスワード付きならOK'], c: 0, exp: '未公開の財務情報は極めて重要なインサイダー情報です。外部AIへの入力は重大なコンプライアンス違反となります。' },
+                { cat: 'input', q: '取引先の請求書（PDF）をAIに読み込ませてデータ化したい。', a: ['社外秘情報を含むのでダメ', '金額だけならOK', 'PDFなら読み取られないのでOK'], c: 0, exp: '請求書には取引先の情報が含まれます。会社が契約・許可したセキュアなシステム以外での読み込みは控えましょう。' },
+                { cat: 'hallucination', q: '複雑な税務処理についてAIに聞いたら、明確な回答が返ってきた。', a: ['そのまま処理する', '関連法規や専門家に裏取りする', 'AIの言う通りなら責任を問われない'], c: 1, exp: 'AIは法的な正確性を保証しません。特に税務など厳密なルールがあるものは、必ず公式な情報源や専門家に確認してください。' },
+                { cat: 'hallucination', q: 'AIに経費の仕訳を聞いたら、自社の規定と違う勘定科目を提案された。', a: ['AIに従う', '自社の規定を優先する', 'とりあえず雑費にする'], c: 1, exp: 'AIは一般的な回答をしますが、自社特有のルールまでは把握していません。自社のマニュアルや規定を優先しましょう。' },
+                { cat: 'shadow', q: '個人のスマホにあるレシート読み取りAIアプリを、業務の経費精算に使いたい。', a: ['効率が上がるならOK', '会社のルール違反なのでダメ', '無料アプリならOK'], c: 1, exp: '業務のデータを個人のアプリで処理することは、シャドーITにあたります。会社が提供するシステムを利用してください。' },
+                { cat: 'shadow', q: 'エクセルより便利な未承認のクラウドAI集計ツールを見つけた。使っていい？', a: ['会社に申請・許可を得てから使う', 'バレないようにこっそり使う', 'テストデータだけなら勝手に使っていい'], c: 0, exp: '便利なツールでも、セキュリティ基準を満たしているか会社の審査が必要です。必ず情報システム部等に相談しましょう。' },
+                { cat: 'phishing', q: '社長から「極秘の買収案件のために、指定口座にすぐ振り込め」とメールが来た。', a: ['極秘なので誰にも言わず振り込む', 'メールに返信して確認する', '規定の承認フローを通し、直接確認する'], c: 2, exp: 'ビジネスメール詐欺（BEC）の典型例です。AIで文章が巧妙化しています。どんなに急かされても通常の承認手続きと確認を省いてはいけません。' },
+                { cat: 'phishing', q: '「国税庁」を名乗るメールで「未納税金があります。AIで詳細を確認」とリンクがあった。', a: ['リンクをクリックする', '無視して削除する', '転送して他の人に開かせる'], c: 1, exp: '公的機関を騙るフィッシング詐欺です。リンクを開いたり情報を入力したりせず、正規のルートで確認するか削除しましょう。' }
+            ],
+            hr: [
+                { cat: 'input', q: '中途採用候補者の履歴書をAIに入力して、強みを要約させてよいか？', a: ['絶対にダメ', '名前を伏せればOK', '学歴だけならOK'], c: 0, exp: '履歴書は機微な個人情報の塊です。許可されていない外部AIへの入力は個人情報漏洩になります。' },
+                { cat: 'input', q: '社員の健康診断の結果データをAIに入れて傾向を分析したい。', a: ['匿名化すればOK', '絶対にダメ', '人事部内ならOK'], c: 1, exp: '健康情報は特に配慮が必要な個人情報です。安易なAI入力は重大なプライバシー侵害につながります。' },
+                { cat: 'hallucination', q: '社員からの就業規則の質問に、AIが答えた内容をそのまま返信してよいか？', a: ['早い方がいいのでそのまま返す', '必ず就業規則の原本と照らし合わせる', 'AIの回答と注記して返す'], c: 1, exp: 'AIは自社の規則を正確に理解しているわけではありません。間違えた案内は労使トラブルの元になります。' },
+                { cat: 'hallucination', q: 'AIに「使える助成金」を聞いたら、聞いたことのない制度を提案された。', a: ['すぐ申請準備をする', '厚生労働省などの公式サイトで確認する', 'AIが言うならあるはずだ'], c: 1, exp: 'AIが過去の制度や架空の制度を提案することがあります。必ず公式サイトで最新情報を確認してください。' },
+                { cat: 'shadow', q: 'シフト作成が大変なので、ネットで見つけた無料のAIシフト作成ツールを使いたい。', a: ['社員の名前を入れなければOK', '会社の許可がないので使わない', 'お試しならOK'], c: 1, exp: '社員の勤務情報なども重要なデータです。セキュリティ確認が取れていない未承認ツールの業務利用は禁止です。' },
+                { cat: 'shadow', q: '外国人社員との面談。会社支給のPCがないので個人のスマホのAI翻訳を使いたい。', a: ['機密の話をしなければOK', '個人の端末での業務処理は避ける', '履歴を残さなければOK'], c: 1, exp: '個人端末や未承認ツールの利用は情報管理の観点からリスクが高いです。事前に適切な環境を会社に準備してもらいましょう。' },
+                { cat: 'phishing', q: '「労働基準監督署」から「AIによる労務監査のお知らせ」という添付ファイル付きメールが来た。', a: ['すぐ開いて確認する', '開かずに情シス等に報告・相談する', 'とりあえず保存する'], c: 1, exp: '公的機関を装ったマルウェアメールの可能性があります。不審な添付ファイルは絶対に開かず報告してください。' },
+                { cat: 'phishing', q: '役員から「給与振込口座を急に変更して」といつもと違う口調のメールが来た。', a: ['急いで変更手続きをする', '電話や社内チャット等で本人に確認する', 'AIの自動翻訳かもしれないので変更する'], c: 1, exp: 'AIを使ったなりすましメールの可能性があります。金銭絡みの急な変更依頼は、必ず本人に直接確認を取りましょう。' }
+            ],
+            manufacturing: [
+                { cat: 'input', q: '新製品の設計図面のデータをAIに入力して、改善点を提案させてよいか？', a: ['絶対にダメ', '一部だけならOK', '社内のWi-FiからならOK'], c: 0, exp: '設計図は企業の競争力の源泉（営業秘密）です。外部AIに入力すると情報が流出し、取り返しがつかない損害に繋がります。' },
+                { cat: 'input', q: '工場で起きた不具合の報告書を、AIにきれいに書き直させたい。', a: ['製品名や顧客名を伏せればOK', '絶対にダメ', 'パスワードをかければOK'], c: 1, exp: '不具合情報も重要な品質・機密情報です。伏字にしても内容から推測されるリスクがあるため、未許可のAIには入力しないでください。' },
+                { cat: 'hallucination', q: 'AIに材料の新しい配合比率を聞いたら、良さそうな案を出してきた。', a: ['そのまま試作ラインに乗せる', '専門知識を持つ人間が理論的に検証する', 'AIを信じて量産する'], c: 1, exp: 'AIは科学的にあり得ない、あるいは危険な配合を提案することがあります。必ず人間の専門家による検証が必要です。' },
+                { cat: 'hallucination', q: 'AIに安全基準について尋ねたら、社内のマニュアルと違う手順を回答した。', a: ['AIの方が最新なので従う', '社内のマニュアルに従う', '適当に間を取る'], c: 1, exp: '安全基準は命に関わります。AIの回答を鵜呑みにせず、必ず自社の公式な安全マニュアルや責任者の指示に従ってください。' },
+                { cat: 'shadow', q: '製品のキズ判定に、個人のタブレットに入れた無料AI画像認識アプリを使いたい。', a: ['精度が高いなら使ってよい', '会社の許可がないので使わない', '写真をすぐ消せばOK'], c: 1, exp: '製品の画像を未許可のアプリで撮影・処理することは、製造ノウハウの流出に繋がるシャドーITです。' },
+                { cat: 'shadow', q: '工程管理が面倒なので、ネットのAIスケジュールツールに予定を入れたい。', a: ['個人名を出さなければOK', '会社の許可を得たツールだけを使う', '無料ならOK'], c: 1, exp: '工場の稼働状況やスケジュールも立派な機密情報です。セキュリティ部門が認めたツール以外での管理は禁止です。' },
+                { cat: 'phishing', q: '取引先の部品メーカーから「部品の仕様を急遽変更する」というメールが来た。', a: ['メールの通りに変更対応する', '電話など別の手段で担当者に事実確認する', 'とりあえず放置する'], c: 1, exp: 'AIで巧妙に作成された偽の指示メールかもしれません。製造工程に影響が出る指示は、必ず正規のルートで確認を取ってください。' },
+                { cat: 'phishing', q: '安全管理者から「新しいAI安全マニュアル」というリンク付きのメールが届いたが、宛名がおかしい。', a: ['リンクを開いて確認する', '開かずに本人に確認するか情シスに報告', '他の人に転送して開かせる'], c: 1, exp: '社内を装った標的型攻撃メールの可能性があります。少しでも不審点があれば開かないでください。' }
+            ],
+            dev: [
+                { cat: 'input', q: 'リリース前の重要なソースコードをAIに貼り付けて、バグを見つけさせたい。', a: ['絶対にダメ', '一部の関数だけならOK', 'コメントを消せばOK'], c: 0, exp: 'ソースコードは重要な知的財産です。公開前のコードを外部AIに渡すことは、情報漏洩のリスクの最大の一つです。' },
+                { cat: 'input', q: 'データベースの接続設定ファイル（パスワード含む）をAIに見せてエラー原因を聞きたい。', a: ['パスワード部分だけ伏せればOK', '絶対にダメ', 'テスト環境のものならOK'], c: 1, exp: '認証情報やシステム構成情報を外部に出すことは致命的なセキュリティ事故に直結します。絶対に入力してはいけません。' },
+                { cat: 'hallucination', q: 'AIが生成したコードが動いた。本番環境にそのまま組み込んでよいか？', a: ['動くならそのまま組み込む', '必ずコードの内容を理解し、テストを行う', 'AIが作ったとコメントを残せばOK'], c: 1, exp: 'AIは脆弱性を含むコードや意図しない動作をするコードを生成することがあります。人間のエンジニアによるレビューとテストが不可欠です。' },
+                { cat: 'hallucination', q: 'AIに機能の実装方法を聞いたら、存在しないライブラリの使用を提案された。', a: ['とりあえずインストールを試みる', '公式ドキュメントでライブラリの存在を確認する', 'AIに文句を言う'], c: 1, exp: 'AIは存在しない関数やライブラリをでっち上げる（ハルシネーション）ことがあります。必ず公式ドキュメントで確認する癖をつけましょう。' },
+                { cat: 'shadow', q: '会社支給のPCに、未承認のAIコーディング支援プラグインを入れてもいい？', a: ['開発効率が上がるならOK', '許可されていないツールは入れない', '自己責任で入れる'], c: 1, exp: 'プラグインがバックグラウンドでコードを外部送信するリスクがあります。必ず会社のセキュリティ審査を通されたツールを使用してください。' },
+                { cat: 'shadow', q: '社内の開発環境が重いので、個人のクラウドアカウントのAI環境でデバッグしたい。', a: ['終わったらデータを消すからOK', '業務データを個人環境に持ち出さない', '誰にもバレなければOK'], c: 1, exp: '業務データを会社の管理外に持ち出すことは、シャドーITであり重大なセキュリティ違反です。' },
+                { cat: 'phishing', q: '「システム管理者」から「AI監査のためパスワードをリセットしてください」とメールが来た。', a: ['リンクからパスワードを再設定する', '無視して正規の窓口に確認する', 'とりあえず適当なパスワードを入れる'], c: 1, exp: '管理者を騙り認証情報を盗み取るフィッシングです。AIによって文面が自然になっているため、リンク先ドメイン等を注意深く確認する必要があります。' },
+                { cat: 'phishing', q: '利用しているクラウドサービスから「AI機能の追加料金未払い」という請求メールが来た。', a: ['急いでクレジットカードで払う', 'メールのリンクは踏まず、公式サイトから管理画面を確認する', 'メールに返信する'], c: 1, exp: '不安を煽って偽サイトに誘導する詐欺です。絶対にメール内のリンクはクリックせず、ブックマーク等から公式サイトにアクセスして確認してください。' }
+            ]
+        };
+
+        const bossQuestions = [
+            { q: '業務でAIを利用する際の、最も基本となる原則はどれ？', a: ['効率化のためなら何を入力してもよい', '機密情報や個人情報は入力しない', 'AIの回答はすべて正しいと信じる'], c: 1, exp: 'AIは強力なツールですが、情報漏洩のリスクがあります。機密情報や個人情報を入力しないことが鉄則です。' },
+            { q: 'AIを使って業務効率化を図る際、人間が必ず行うべきことは？', a: ['AIの出力結果の最終確認と責任を負う', 'AIへの丸投げ', 'AIの機嫌を取ること'], c: 0, exp: 'AIは間違える前提で使いましょう。最終的な内容の確認と判断は、人間の責任で行う必要があります。' },
+            { q: 'ネットで便利そうな新しいAIツールを見つけた。業務で使いたい時は？', a: ['とりあえずこっそり使ってみる', '社内のルールを確認し、情シス等に相談する', '無料なら勝手に使ってよい'], c: 1, exp: '未許可のツールの利用はセキュリティ事故の元です。必ず会社のルールに従い、安全が確認されたツールを使いましょう。' }
+        ];
+
+        const gachaItems = [
+            { id: 'item_1', type: '事例カード', name: '「うっかり送信」の巻', desc: '機密情報をAIに入力してしまい、大目玉を食らった社員の事例カード。' },
+            { id: 'item_2', type: '事例カード', name: '「信じすぎた代償」の巻', desc: 'AIの嘘をそのまま報告し、取引先に怒られた事例カード。' },
+            { id: 'item_3', type: 'プロンプトひな形', name: '安全な要約プロンプト', desc: '「固有名詞をA社などに置き換えて要約して」という安全な指示のテンプレート。' },
+            { id: 'item_4', type: 'プロンプトひな形', name: 'アイディア出しプロンプト', desc: '機密情報を含めずに、壁打ち相手としてAIを使うテンプレート。' },
+            { id: 'item_5', type: '装備', name: 'ミスリルのキーボード', desc: 'タイピング音が心地よく、うっかり入力を防ぐ（気がする）キーボード。' },
+            { id: 'item_6', type: '装備', name: '真実のメガネ', desc: 'AIのハルシネーションを見破りやすくなる（気がする）メガネ。' },
+            { id: 'item_7', type: 'レア', name: '部長の失敗談カード', desc: '「実は私も昔...」部長がAIに騙されかけた時の貴重なエピソード。' }
+        ];
+
+        let state = {
+            soundOn: false,
+            job: '',
+            questions: [],
+            currentQIndex: 0,
+            currentScore: 0,
+            earnedItem: null
+        };
+
+        function getSavedData() {
+            try {
+                const data = localStorage.getItem('ai_sec_quest_save');
+                return data ? JSON.parse(data) : { history: [], items: [] };
+            } catch (e) {
+                return { history: [], items: [] };
+            }
+        }
+
+        function saveData(score, title, item) {
+            try {
+                const save = getSavedData();
+                const nowStr = new Date().toLocaleDateString('ja-JP', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' });
+                
+                save.history.unshift({ date: nowStr, score: score, title: title });
+                if (save.history.length > 10) save.history.pop();
+
+                if (item && !save.items.some(i => i.id === item.id)) {
+                    save.items.push(item);
+                }
+
+                localStorage.setItem('ai_sec_quest_save', JSON.stringify(save));
+            } catch (e) {
+                console.error('Storage error:', e);
+            }
+        }
+
+        function openCollection(tab = 'history') {
+            const save = getSavedData();
+            
+            const historyEl = document.getElementById('history-list');
+            if (save.history.length === 0) {
+                historyEl.innerHTML = 'まだプレイ履歴がありません';
+            } else {
+                historyEl.innerHTML = save.history.map(h => 
+                    `<div class="flex justify-between border-b border-gray-800 py-1"><span>${h.date} (${h.title})</span><span class="text-yellow-400 font-bold">${h.score}/5問正解</span></div>`
+                ).join('');
+            }
+
+            const itemEl = document.getElementById('item-list');
+            if (save.items.length === 0) {
+                itemEl.innerHTML = 'まだアイテムを獲得していません';
+            } else {
+                itemEl.innerHTML = save.items.map(i => 
+                    `<div class="bg-gray-800 p-2 rounded border border-gray-700"><span class="text-yellow-300 font-bold">【${i.type}】${i.name}</span><p class="text-gray-400 mt-0.5">${i.desc}</p></div>`
+                ).join('');
+            }
+
+            changeScreen('screen-collection');
+        }
+
+        let audioCtx = null;
+
+        function initAudio() {
+            if (!audioCtx) {
+                const AudioContext = window.AudioContext || window.webkitAudioContext;
+                audioCtx = new AudioContext();
+            }
+        }
+
+        function playSound(type) {
+            if (!state.soundOn) return;
+            initAudio();
+            if(audioCtx.state === 'suspended') audioCtx.resume();
+
+            const osc = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+            osc.connect(gain);
+            gain.connect(audioCtx.destination);
+
+            const now = audioCtx.currentTime;
+            
+            if (type === 'correct') {
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(880, now);
+                osc.frequency.exponentialRampToValueAtTime(1760, now + 0.1);
+                gain.gain.setValueAtTime(0.3, now);
+                gain.gain.exponentialRampToValueAtTime(0.01, now + 0.3);
+                osc.start(now);
+                osc.stop(now + 0.3);
+            } else if (type === 'wrong') {
+                osc.type = 'sawtooth';
+                osc.frequency.setValueAtTime(150, now);
+                osc.frequency.exponentialRampToValueAtTime(100, now + 0.3);
+                gain.gain.setValueAtTime(0.3, now);
+                gain.gain.exponentialRampToValueAtTime(0.01, now + 0.4);
+                osc.start(now);
+                osc.stop(now + 0.4);
+            } else if (type === 'effect') {
+                osc.type = 'square';
+                osc.frequency.setValueAtTime(300, now);
+                osc.frequency.exponentialRampToValueAtTime(600, now + 0.2);
+                gain.gain.setValueAtTime(0.2, now);
+                gain.gain.exponentialRampToValueAtTime(0.01, now + 0.25);
+                osc.start(now);
+                osc.stop(now + 0.25);
+            }
+        }
+
+        document.getElementById('btn-sound').addEventListener('click', (e) => {
+            state.soundOn = !state.soundOn;
+            e.target.innerText = state.soundOn ? '♪ ON' : '♪ OFF';
+            if(state.soundOn) initAudio();
+        });
+
+        function changeScreen(screenId) {
+            const screens = ['screen-title', 'screen-collection', 'screen-notice', 'screen-job', 'screen-battle', 'screen-gacha', 'screen-title-eval', 'screen-end'];
+            screens.forEach(id => {
+                document.getElementById(id).classList.add('hidden');
+                document.getElementById(id).classList.remove('flex');
+            });
+            document.getElementById(screenId).classList.remove('hidden');
+            document.getElementById(screenId).classList.add('flex');
+        }
+
+        document.getElementById('btn-start').addEventListener('click', () => {
+            changeScreen('screen-notice');
+        });
+
+        // 隠しコマンド（↑↑↓↓←→←→BA）の実装
+        const konamiCode = ['ArrowUp', 'ArrowUp', 'ArrowDown', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'ArrowLeft', 'ArrowRight', 'b', 'a'];
+        let konamiIndex = 0;
+
+        document.addEventListener('keydown', (e) => {
+            const activeScreen = document.getElementById('screen-title');
+            if (activeScreen.classList.contains('hidden')) return;
+
+            const key = e.key.length === 1 ? e.key.toLowerCase() : e.key;
+            const expected = konamiCode[konamiIndex].length === 1 ? konamiCode[konamiIndex].toLowerCase() : konamiCode[konamiIndex];
+
+            if (key === expected) {
+                konamiIndex++;
+                if (konamiIndex === konamiCode.length) {
+                    triggerSecretReward();
+                    konamiIndex = 0;
+                }
+            } else {
+                konamiIndex = 0;
+            }
+        });
+
+        // スマホ用：タイトルロゴ5回連続タップ
+        let titleTapCount = 0;
+        let titleTapTimer = null;
+        document.getElementById('title-logo').addEventListener('click', () => {
+            titleTapCount++;
+            if (titleTapTimer) clearTimeout(titleTapTimer);
+            
+            titleTapTimer = setTimeout(() => {
+                titleTapCount = 0;
+            }, 1500);
+
+            if (titleTapCount >= 5) {
+                triggerSecretReward();
+                titleTapCount = 0;
+            }
+        });
+
+        function triggerSecretReward() {
+            playSound('correct');
+            const save = getSavedData();
+            
+            const rareItem = gachaItems.find(i => i.id === 'item_7');
+            const nowStr = new Date().toLocaleDateString('ja-JP', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' });
+            
+            save.history.unshift({ date: nowStr, score: 5, title: '伝説の中堅社員' });
+            if (rareItem && !save.items.some(i => i.id === rareItem.id)) {
+                save.items.push(rareItem);
+            }
+            localStorage.setItem('ai_sec_quest_save', JSON.stringify(save));
+
+            document.getElementById('secret-modal').classList.remove('hidden');
+        }
+
+        function closeSecretModal() {
+            document.getElementById('secret-modal').classList.add('hidden');
+        }
+
+        function selectJob(jobId) {
+            state.job = jobId;
+            state.currentScore = 0;
+            document.getElementById('battle-job-name').innerText = jobMap[jobId];
+            document.getElementById('hero-label').innerText = jobMap[jobId];
+            
+            drawHero(jobId);
+
+            const jobQs = qData[jobId];
+            const cats = ['input', 'hallucination', 'shadow', 'phishing'];
+            let selectedQs = [];
+            
+            cats.forEach(cat => {
+                const catQs = jobQs.filter(q => q.cat === cat);
+                if(catQs.length > 0) {
+                    const rnd = Math.floor(Math.random() * catQs.length);
+                    let enemyType = 'boss';
+                    if(cat === 'input') enemyType = 'input';
+                    if(cat === 'hallucination') enemyType = 'hallucination';
+                    if(cat === 'shadow') enemyType = 'shadow';
+                    if(cat === 'phishing') enemyType = 'phishing';
+                    
+                    selectedQs.push({ ...catQs[rnd], enemyType: enemyType });
+                }
+            });
+
+            selectedQs = selectedQs.sort(() => Math.random() - 0.5);
+
+            const bossQ = bossQuestions[Math.floor(Math.random() * bossQuestions.length)];
+            selectedQs.push({ ...bossQ, enemyType: 'boss' });
+
+            state.questions = selectedQs;
+            state.currentQIndex = 0;
+
+            changeScreen('screen-battle');
+            loadQuestion();
+        }
+
+        function loadQuestion() {
+            const q = state.questions[state.currentQIndex];
+            
+            document.getElementById('battle-progress').innerText = `第 ${state.currentQIndex + 1} 問 / 5`;
+            document.getElementById('question-text').innerText = q.q;
+            
+            const enemyData = enemies[q.enemyType];
+            document.getElementById('enemy-name').innerText = enemyData.name;
+            document.getElementById('enemy-name').style.color = enemyData.color;
+            drawEnemy(q.enemyType);
+
+            const container = document.getElementById('choices-container');
+            container.innerHTML = '';
+            
+            q.a.forEach((ansText, index) => {
+                const btn = document.createElement('button');
+                btn.className = 'rpg-button text-sm flex-shrink-0';
+                btn.innerText = ansText;
+                btn.onclick = () => checkAnswer(index, btn);
+                container.appendChild(btn);
+            });
+            
+            resetEffects();
+        }
+
+        function resetEffects() {
+            document.getElementById('fx-slash').classList.remove('active');
+            document.getElementById('fx-coin1').classList.remove('active');
+            document.getElementById('fx-coin2').classList.remove('active');
+            document.getElementById('fx-coin3').classList.remove('active');
+            document.getElementById('fx-grand').classList.remove('active');
+            document.getElementById('fx-holy').classList.remove('active');
+            document.getElementById('fx-lightning').classList.remove('active');
+
+            document.getElementById('mark-o').classList.remove('pop-active');
+            document.getElementById('mark-x').classList.remove('pop-active');
+            document.getElementById('game-container').classList.remove('shake');
+            document.getElementById('hero-wrapper').classList.remove('hero-step');
+            document.getElementById('hero-wrapper').classList.remove('hero-cast');
+        }
+
+        function playJobAttackEffect() {
+            playSound('effect');
+            const heroWrap = document.getElementById('hero-wrapper');
+
+            if (state.job === 'dev' || state.job === 'accounting' || state.job === 'hr') {
+                heroWrap.classList.add('hero-cast');
+            } else {
+                heroWrap.classList.add('hero-step');
+            }
+
+            if (state.job === 'manufacturing') {
+                document.getElementById('fx-slash').classList.add('active');
+            } else if (state.job === 'sales') {
+                document.getElementById('fx-coin1').classList.add('active');
+                document.getElementById('fx-coin2').classList.add('active');
+                document.getElementById('fx-coin3').classList.add('active');
+            } else if (state.job === 'accounting') {
+                document.getElementById('fx-grand').classList.add('active');
+            } else if (state.job === 'hr') {
+                document.getElementById('fx-holy').classList.add('active');
+            } else if (state.job === 'dev') {
+                document.getElementById('fx-lightning').classList.add('active');
+            }
+        }
+
+        function checkAnswer(selectedIndex, btnElement) {
+            const buttons = document.querySelectorAll('#choices-container .rpg-button');
+            buttons.forEach(b => b.disabled = true);
+            btnElement.classList.add('selected');
+
+            const q = state.questions[state.currentQIndex];
+            const isCorrect = (selectedIndex === q.c);
+
+            if (isCorrect) {
+                playJobAttackEffect();
+                
+                setTimeout(() => {
+                    playSound('correct');
+                    document.getElementById('mark-o').classList.add('pop-active');
+                    state.currentScore++;
+                    showExplanation(true, q.exp);
+                }, 350);
+
+            } else {
+                playSound('wrong');
+                document.getElementById('game-container').classList.add('shake');
+                document.getElementById('mark-x').classList.add('pop-active');
+                
+                setTimeout(() => {
+                    showExplanation(false, q.exp);
+                }, 500);
+            }
+        }
+
+        function showExplanation(isCorrect, expText) {
+            setTimeout(() => {
+                const modal = document.getElementById('explanation-modal');
+                const title = document.getElementById('exp-title');
+                
+                if (isCorrect) {
+                    title.innerText = '見事な対応！';
+                    title.className = 'text-xl font-bold mb-2 text-center text-green-400';
+                } else {
+                    title.innerText = 'ヒヤリハット発生...';
+                    title.className = 'text-xl font-bold mb-2 text-center text-red-400';
+                }
+                
+                document.getElementById('exp-text').innerText = expText;
+                modal.classList.remove('hidden');
+            }, 800);
+        }
+
+        function nextQuestion() {
+            document.getElementById('explanation-modal').classList.add('hidden');
+            state.currentQIndex++;
+
+            if (state.currentQIndex < 5) {
+                loadQuestion();
+            } else {
+                changeScreen('screen-gacha');
+                document.getElementById('chest-icon').classList.remove('hidden');
+                document.getElementById('chest-hint').classList.remove('hidden');
+                document.getElementById('gacha-result').classList.add('hidden');
+                document.getElementById('gacha-result').classList.remove('flex');
+            }
+        }
+
+        function openChest() {
+            playSound('correct');
+            document.getElementById('chest-icon').classList.add('hidden');
+            document.getElementById('chest-hint').classList.add('hidden');
+            
+            const save = getSavedData();
+            const ownedIds = save.items.map(i => i.id);
+            const unownedItems = gachaItems.filter(i => !ownedIds.includes(i.id));
+            
+            const pool = unownedItems.length > 0 ? unownedItems : gachaItems;
+            const item = pool[Math.floor(Math.random() * pool.length)];
+            state.earnedItem = item;
+            
+            document.getElementById('gacha-type').innerText = `【${item.type}】`;
+            document.getElementById('gacha-name').innerText = item.name;
+            document.getElementById('gacha-desc').innerText = item.desc;
+            
+            const res = document.getElementById('gacha-result');
+            res.classList.remove('hidden');
+            res.classList.add('flex');
+
+            evaluateTitle();
+        }
+
+        function evaluateTitle() {
+            let title = 'うっかり見習い';
+            let color = 'text-gray-400';
+            
+            if (state.currentScore === 5) {
+                title = 'AI安全の勇者 (5/5点)';
+                color = 'text-yellow-400';
+            } else if (state.currentScore === 4) {
+                title = '機密の守護者 (4/5点)';
+                color = 'text-blue-400';
+            } else if (state.currentScore === 3) {
+                title = '情報の番人 (3/5点)';
+                color = 'text-green-400';
+            } else {
+                title = 'うっかり見習い (0〜2点)';
+                color = 'text-orange-400';
+            }
+
+            const titleEl = document.getElementById('player-title');
+            titleEl.innerText = title;
+            titleEl.className = `text-2xl font-bold mb-2 ${color}`;
+            document.getElementById('current-score').innerText = state.currentScore;
+
+            saveData(state.currentScore, title, state.earnedItem);
+        }
+
+        function declare(text) {
+            document.getElementById('declared-text').innerHTML = `「<span class="font-bold text-yellow-300">${text}</span>」<br>と宣言しました！<br>明日からの業務に活かしましょう。`;
+            changeScreen('screen-end');
+            playSound('correct');
+        }
+
+        function resetGame() {
+            changeScreen('screen-job');
+        }
+
+        function drawHero(job) {
+            const canvas = document.getElementById('hero-canvas');
+            const ctx = canvas.getContext('2d');
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            const spriteSize = 8;
+            const pixelSize = canvas.width / spriteSize;
+            let sprite = [];
+            
+            if (job === 'sales') {
+                sprite = [
+                    [0,0,2,2,2,2,0,0],
+                    [0,2,3,3,3,3,2,0],
+                    [0,2,1,1,1,1,2,0],
+                    [2,5,5,3,3,5,5,2],
+                    [2,5,4,5,5,4,5,2],
+                    [0,2,5,5,5,5,2,0],
+                    [0,2,6,6,6,6,2,0],
+                    [0,2,0,2,2,0,2,0]
+                ];
+            } else if (job === 'accounting') {
+                sprite = [
+                    [0,0,2,2,2,2,0,0],
+                    [0,2,3,3,3,3,2,0],
+                    [0,2,1,3,3,1,2,0],
+                    [2,3,3,3,3,3,3,2],
+                    [2,3,7,3,3,7,3,2],
+                    [0,2,7,7,7,7,2,0],
+                    [0,2,7,7,7,7,2,0],
+                    [0,2,0,2,2,0,2,0]
+                ];
+            } else if (job === 'hr') {
+                sprite = [
+                    [0,0,2,2,2,2,0,0],
+                    [0,2,3,3,3,3,2,0],
+                    [0,2,1,1,1,1,2,0],
+                    [2,4,4,4,4,4,4,2],
+                    [2,4,3,4,4,3,4,2],
+                    [0,2,4,4,4,4,2,0],
+                    [0,2,4,4,4,4,2,0],
+                    [0,2,0,2,2,0,2,0]
+                ];
+            } else if (job === 'manufacturing') {
+                sprite = [
+                    [0,0,8,8,8,8,0,0],
+                    [0,8,3,3,3,3,8,0],
+                    [0,2,1,1,1,1,2,0],
+                    [2,8,8,3,3,8,8,2],
+                    [2,8,3,8,8,3,8,2],
+                    [0,2,8,8,8,8,2,0],
+                    [0,2,2,0,0,2,2,0],
+                    [0,2,0,0,0,0,2,0]
+                ];
+            } else {
+                sprite = [
+                    [0,0,0,9,9,0,0,0],
+                    [0,0,9,9,9,9,0,0],
+                    [0,2,3,3,3,3,2,0],
+                    [2,9,9,3,3,9,9,2],
+                    [2,9,3,9,9,3,9,2],
+                    [0,2,9,9,9,9,2,0],
+                    [0,2,9,9,9,9,2,0],
+                    [0,2,0,2,2,0,2,0]
+                ];
+            }
+
+            for (let y = 0; y < spriteSize; y++) {
+                for (let x = 0; x < spriteSize; x++) {
+                    let val = sprite[y][x];
+                    if (val === 0) continue;
+                    
+                    if (val === 1) ctx.fillStyle = '#fbcfe8';
+                    else if (val === 2) ctx.fillStyle = '#000000';
+                    else if (val === 3) ctx.fillStyle = '#ffffff';
+                    else if (val === 4) ctx.fillStyle = '#22c55e';
+                    else if (val === 5) ctx.fillStyle = '#fbbf24';
+                    else if (val === 6) ctx.fillStyle = '#78350f';
+                    else if (val === 7) ctx.fillStyle = '#3b82f6';
+                    else if (val === 8) ctx.fillStyle = '#ef4444';
+                    else if (val === 9) ctx.fillStyle = '#8b5cf6';
+
+                    ctx.fillRect(x * pixelSize, y * pixelSize, pixelSize, pixelSize);
+                }
+            }
+        }
+
+        function drawEnemy(type) {
+            const canvas = document.getElementById('enemy-canvas');
+            const ctx = canvas.getContext('2d');
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            const spriteSize = 8;
+            const pixelSize = canvas.width / spriteSize;
+
+            let sprite = [];
+            let mainColor = enemies[type].color;
+
+            if (type === 'input') {
+                sprite = [
+                    [0,0,0,2,2,0,0,0],
+                    [0,0,2,1,1,2,0,0],
+                    [0,2,1,1,1,1,2,0],
+                    [2,1,2,3,1,2,3,2],
+                    [2,1,2,2,1,2,2,2],
+                    [2,1,1,1,1,1,1,2],
+                    [0,2,1,1,1,1,2,0],
+                    [0,0,2,2,2,2,0,0]
+                ];
+            } else if (type === 'hallucination') {
+                sprite = [
+                    [0,0,2,2,2,2,0,0],
+                    [0,2,1,1,1,1,2,0],
+                    [2,1,2,3,1,2,3,2],
+                    [2,1,1,1,1,1,1,2],
+                    [2,1,1,1,1,1,1,2],
+                    [2,1,2,1,1,2,1,2],
+                    [0,2,0,2,2,0,2,0],
+                    [0,0,0,0,0,0,0,0]
+                ];
+            } else if (type === 'shadow') {
+                sprite = [
+                    [2,0,0,0,0,0,0,2],
+                    [2,2,0,2,2,0,2,2],
+                    [0,2,2,1,1,2,2,0],
+                    [0,2,1,2,2,1,2,0],
+                    [0,2,1,1,1,1,2,0],
+                    [0,0,2,4,4,2,0,0],
+                    [0,0,2,1,1,2,0,0],
+                    [0,0,0,2,2,0,0,0]
+                ];
+            } else if (type === 'phishing') {
+                sprite = [
+                    [0,0,2,2,2,2,0,0],
+                    [0,2,1,1,1,1,2,0],
+                    [2,1,3,3,3,3,1,2],
+                    [2,3,2,3,3,2,3,2],
+                    [2,1,3,3,3,3,1,2],
+                    [0,2,1,1,1,1,2,0],
+                    [0,2,2,2,2,2,2,0],
+                    [0,0,2,0,0,2,0,0]
+                ];
+            } else {
+                sprite = [
+                    [0,2,2,0,0,2,2,0],
+                    [2,1,1,2,2,1,1,2],
+                    [2,4,3,1,1,3,4,2],
+                    [2,1,1,1,1,1,1,2],
+                    [0,2,1,2,2,1,2,0],
+                    [0,0,2,4,4,2,0,0],
+                    [0,2,1,1,1,1,2,0],
+                    [2,1,1,2,2,1,1,2]
+                ];
+            }
+
+            for (let y = 0; y < spriteSize; y++) {
+                for (let x = 0; x < spriteSize; x++) {
+                    let val = sprite[y][x];
+                    if (val === 0) continue;
+                    
+                    if (val === 1) ctx.fillStyle = mainColor;
+                    else if (val === 2) ctx.fillStyle = '#000000';
+                    else if (val === 3) ctx.fillStyle = '#ffffff';
+                    else if (val === 4) ctx.fillStyle = '#ef4444';
+
+                    ctx.fillRect(x * pixelSize, y * pixelSize, pixelSize, pixelSize);
+                }
+            }
+        }
+
+        const btnBoss = document.getElementById('btn-boss');
+        const bossScreen = document.getElementById('boss-screen');
+
+        btnBoss.addEventListener('click', () => {
+            bossScreen.style.display = 'block';
+        });
+
+        bossScreen.addEventListener('click', () => {
+            bossScreen.style.display = 'none';
+        });
+    </script>
+</body>
+</html>
